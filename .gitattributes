@@ -1,0 +1,3 @@
+*.sh text eol=lf
+generator text eol=lf
+clean text eol=lf
