@@ -654,7 +654,7 @@ int print_results(){
 		printf("  Credit granted: \t\t%'" PRId64 " credits\n", (long int)database->total_credit);
 		printf("  FLOPS average: \t\t%'" PRId64 " GFLOPS\n\n", (int64_t)((double)database->nvalid_results*(double)database->job_duration/sim_duration/1000000000.0));	
 		FILE *task_dynamic_file = fopen("../exp/task_dynamic", "w+");
-		for(j=0; j<sim_duration; j++) fprintf(task_dynamic_file, "%0.1f\n", database->valid_workunits_timestamps[j]);	
+		for(j=0; j<sim_duration; j++) fprintf(task_dynamic_file, "%d\n", database->valid_workunits_timestamps[j]);	
 		fclose(task_dynamic_file);
 		FILE *clients_dynamic_file = fopen("../exp/clients_dynamic", "w+");
 		for(j=0; j<sim_duration; j++) fprintf(clients_dynamic_file, "%d\n", database->clients_availability[j]);	
