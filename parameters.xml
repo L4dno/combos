@@ -7,7 +7,7 @@
 		<snumber>0</snumber>				<!-- Project number -->
 		<name>PROJECT1</name>				<!-- Project name -->
 		<nscheduling_servers>1</nscheduling_servers>	<!-- Number of scheduling servers -->
-		<ndata_servers>2</ndata_servers>		<!-- Number of data servers of the project -->
+		<ndata_servers>1</ndata_servers>		<!-- Number of data servers of the project -->
 		<server_pw>250000000000</server_pw>		<!-- Server power in FLOPS -->
 		<disk_bw>12000000000</disk_bw>			<!-- Disk speed in bytes/sec -->
 		<ifgl_percentage>100<ifgl_percentage>		<!-- Percentage of input files generated locally -->
@@ -33,10 +33,10 @@
 	<group>
 		<n_clients>15000</n_clients>			 <!-- Number of clients of the cluster -->
 		<connection_interval>1</connection_interval>	<!-- Connection interval -->
-		<scheduling_interval>3600</connection_interval>	<!-- Scheduling interval -->
+		<scheduling_interval>3600</scheduling_interval>	<!-- Scheduling interval -->
 		<gbw>1Gbps</gbw>				<!-- Cluster link bandwidth in bps -->
 		<glatency>10ms</glatency>			<!-- Cluster link latency -->
-		<traces_file>/Traces/asteroids/unsorted</traces_file>			<!-- Host power traces file -->
+		<traces_file>NULL</traces_file>			<!-- Host power traces file -->
 		<max_speed>337</max_speed>			<!-- Maximum host speed in GFlops -->
 		<min_speed>3</min_speed>			<!-- Minumum host speed in GFlops -->
 		<pv_distri>5</pv_distri>			<!-- Speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
