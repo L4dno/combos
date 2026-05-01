@@ -2326,9 +2326,9 @@ static client_t client_new(int argc, char *argv[])
 		else if(aux < _group_info[group_number].min_speed)
 			aux = _group_info[group_number].min_speed;
 	}
-	//FILE* speed_statistics_file = fopen("../exp/speed_statistics", "a+");
-	//fprintf(speed_statistics_file, "%0.1f\n", aux);
-	//fclose(speed_statistics_file);
+	FILE* speed_statistics_file = fopen("../exp/speed_statistics", "a+");
+	fprintf(speed_statistics_file, "%0.1f\n", aux);
+	fclose(speed_statistics_file);
 
 	client->speed = (int64_t)(aux*1000000000.0);
 

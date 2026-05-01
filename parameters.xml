@@ -40,7 +40,7 @@
 		<max_speed>337</max_speed>			<!-- Maximum host speed in GFlops -->
 		<min_speed>3</min_speed>			<!-- Minumum host speed in GFlops -->
 		<pv_distri>5</pv_distri>			<!-- Speed fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
-		<pa_param>0.1734</pa_param>			<!-- A -->
+		<pa_param>0.017735</pa_param>			<!-- A -->
 		<pb_param>-1</pb_param>				<!-- B -->
 		<av_distri>0</av_distri>			<!-- Availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<aa_param>0.393</aa_param>			<!-- A -->
