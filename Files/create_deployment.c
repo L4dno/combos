@@ -245,6 +245,7 @@ int main(int argc, char *argv[]){
 
 		}
 		if(fd_traces !=  NULL) fclose(fd_traces);	
+		printf("%d ", n_clients);
 	}
 
 	/* END */

@@ -99,7 +99,6 @@ let j=0
 let cur_applications=0
 
 arg2[j++]=${n_projects}
-arg2[j++]=${simulation_time}
 
 # Server arguments
 for ((i=0; i<n_projects; i++))
@@ -137,15 +136,8 @@ arg2[j++]=${n_groups}
 for ((i=0, l=0; i<n_groups; i++))
 do
   arg2[j++]=${n_clients[$i]}
-  arg2[j++]=${nh_distri[$i]}
-  arg2[j++]=${ha_param[$i]}
-  arg2[j++]=${hb_param[$i]}
   arg2[j++]=${att_projs[$i]}
   arg2[j++]=${traces_file[$i]}
-  arg2[j++]=${p_reliable[$i]}
-  arg2[j++]=${p_periodic[$i]}
-  arg2[j++]=${p_usual[$i]}
-  arg2[j++]=${p_unreliable[$i]}
   arg2[j++]=${connection_interval[$i]}
   arg2[j++]=${scheduling_interval[$i]}
   arg2[j++]=${max_speed[$i]}
