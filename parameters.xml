@@ -55,7 +55,7 @@
 <client_side>
 	<n_groups>1</n_groups>					<!-- Number of groups -->
 	<group>
-		<n_clients>15000</n_clients>			 <!-- Number of clients of the cluster -->
+		<n_clients>1000</n_clients>			 <!-- Number of clients of the cluster -->
 		<connection_interval>1</connection_interval>	<!-- Connection interval -->
 		<scheduling_interval>3600</scheduling_interval>	<!-- Scheduling interval -->
 		<gbw>1Gbps</gbw>				<!-- Cluster link bandwidth in bps -->
