@@ -54,7 +54,6 @@ XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc 
 #define REQUEST_SIZE 10*KB		// Request size
 #define REPLY_SIZE 10*KB		// Reply size 
 #define MAX_BUFFER 100		// Max buffer
-#define WORKUNITS_TOTAL 1000
 
 /* Project back end */
 int init_database(int argc, char *argv[]);
@@ -282,6 +281,7 @@ struct application {
 
 	int64_t workunits_number; // Number of workunits generate in one period
 	int64_t sleep_time; // Sleep time between periods
+	int64_t tail_target_workunits_total;
 	int32_t is_on;
 	double suspended_until;
 	int32_t nworkunits_cur;
@@ -301,6 +301,11 @@ struct project_database{
 	int32_t nclients;		// Number of clients	
 	int32_t nfinished_clients;	// Number of finished clients
 	int64_t disk_bw;		// Disk bandwidth of data servers
+	int32_t activate_tail_stage;
+	double utilization_safety;
+	double theoretical_flops_budget;
+	double effective_flops_budget;
+	int32_t tail_budget_initialized;
 
 	/*Applications */
 	int32_t applications_num;
@@ -661,6 +666,125 @@ static void grid_idle(client_t client)
 	xbt_mutex_release(_grid_power_mutex);
 }
 
+static double distribution_mean(char num, double a, double b)
+{
+	switch((int)num){
+		case 0:
+			if (a <= 0)
+				return 0;
+			return b * tgamma(1.0 + 1.0 / a);
+		case 1:
+			return a * b;
+		case 2:
+			return exp(a + b * b / 2.0);
+		case 3:
+			return a;
+		case 4:
+			return a;
+		case 5:
+			if (a <= 0)
+				return 0;
+			return 1.0 / a;
+		case 6:
+			return 1;
+		case 7:
+			return 0;
+		default:
+			return 0;
+	}
+}
+
+static double clamped_distribution_mean(char num, double a, double b, double min_speed, double max_speed)
+{
+	double mean = distribution_mean(num, a, b);
+
+	if (max_speed < min_speed) {
+		double aux = min_speed;
+		min_speed = max_speed;
+		max_speed = aux;
+	}
+
+	if ((int)num == 5 && a > 0) {
+		double lower = max(min_speed, 0.0);
+		double upper = max(max_speed, lower);
+		double p_low = 1.0 - exp(-a * lower);
+		double p_high = exp(-a * upper);
+		double middle = (lower + 1.0 / a) * exp(-a * lower) - (upper + 1.0 / a) * exp(-a * upper);
+		return lower * p_low + middle + upper * p_high;
+	}
+
+	if (mean < min_speed)
+		return min_speed;
+	if (mean > max_speed)
+		return max_speed;
+	return mean;
+}
+
+static double group_availability_mean(group_t group)
+{
+	double online = max(distribution_mean(group->av_distri, group->aa_param, group->ab_param), 0.0);
+	double offline = max(distribution_mean(group->nv_distri, group->na_param, group->nb_param), 0.0);
+	double total = online + offline;
+
+	if (total <= 0)
+		return 0;
+
+	return online / total;
+}
+
+static void wait_groups_initialized(void)
+{
+	int32_t i;
+
+	for (i = 0; i < NUMBER_CLIENT_GROUPS; i++) {
+		xbt_mutex_acquire(_group_info[i].mutex);
+		while (_group_info[i].on == 0)
+			xbt_cond_wait(_group_info[i].cond, _group_info[i].mutex);
+		xbt_mutex_release(_group_info[i].mutex);
+	}
+}
+
+static void initialize_tail_budget(pdatabase_t database)
+{
+	int32_t i;
+	double total_percentage = 0;
+	double project_ratio = 1.0;
+
+	if (database->tail_budget_initialized || !database->activate_tail_stage)
+		return;
+
+	wait_groups_initialized();
+
+	database->theoretical_flops_budget = 0;
+	for (i = 0; i < NUMBER_CLIENT_GROUPS; i++) {
+		double mean_speed = clamped_distribution_mean(_group_info[i].sp_distri, _group_info[i].sa_param, _group_info[i].sb_param, _group_info[i].min_speed, _group_info[i].max_speed);
+		double availability = group_availability_mean(&_group_info[i]);
+		database->theoretical_flops_budget += _group_info[i].n_clients * mean_speed * 1000000000.0 * availability * sim_duration;
+	}
+
+	if (_num_clients_t > 0)
+		project_ratio = min((double)database->nclients / (double)_num_clients_t, 1.0);
+	database->theoretical_flops_budget *= project_ratio;
+	database->effective_flops_budget = max(database->theoretical_flops_budget * database->utilization_safety, 0.0);
+
+	for (i = 0; i < database->applications_num; i++) {
+		total_percentage += max(database->applications[i].percentage, 0.0);
+	}
+
+	for (i = 0; i < database->applications_num; i++) {
+		double app_budget = 0;
+		double workunit_cost = (double)database->applications[i].target_nresults * (double)database->applications[i].job_duration;
+		if (total_percentage > 0)
+			app_budget = database->effective_flops_budget * max(database->applications[i].percentage, 0.0) / total_percentage;
+		if (workunit_cost > 0)
+			database->applications[i].tail_target_workunits_total = (int64_t)floor(app_budget / workunit_cost);
+		else
+			database->applications[i].tail_target_workunits_total = 0;
+	}
+
+	database->tail_budget_initialized = 1;
+}
+
 /* 
  *	Task update index 
  */
@@ -768,6 +892,10 @@ int print_results(){
 		for(j=0; j<(int64_t)database->nscheduling_servers; j++, l++) printf(" Scheduling server %" PRId64 ":\tBusy: %0.1f%%\n", j, _sserver_info[l].time_busy/sim_duration*100);
 		for(j=0; j<(int64_t)database->ndata_servers; j++, k++) printf(" Data server %" PRId64 ":\t\tBusy: %0.1f%%\n", j, _dserver_info[k].time_busy/sim_duration*100);
 		printf("\n  Number of clients: %'d\n", database->nclients);
+		printf("  Tail stage active: \t\t%d\n", database->activate_tail_stage);
+		printf("  Utilization safety: \t\t%0.4f\n", database->utilization_safety);
+		printf("  Theoretical flops budget: \t%0.0f\n", database->theoretical_flops_budget);
+		printf("  Effective flops budget: \t%0.0f\n", database->effective_flops_budget);
 		printf("  Messages received: \t\t%'" PRId64 " (work requests received + results received)\n", database->nmessages_received);
 		printf("  Work requests received: \t%'" PRId64 "\n", database->nwork_requests);
 		printf("  Results created: \t\t%'" PRId64 " (%0.1f%%)\n", database->nresults, (double)database->nresults/database->nwork_requests*100);
@@ -793,6 +921,8 @@ int print_results(){
 			printf("Application %ld\n", j);
 			application_t application = &database->applications[j];
 			printf("  Workunits total: \t\t%'" PRId64 "\n", application->nworkunits);
+			printf("  Tail target workunits total: \t%'" PRId64 "\n", application->tail_target_workunits_total);
+			printf("  Workunit cost in flops: \t%0.0f\n", (double)application->target_nresults * (double)application->job_duration);
 			for(k=0; k<sim_duration; k++) fprintf(task_dynamic_file, "%ld %d\n", j,  application->valid_workunits_timestamps[k]);	
 			for(k=0; k<sim_duration; k++) fprintf(task_creation_file, "%ld %d\n", j,  application->creation_workunit_timestamps[k]);	
 			printf("\n");
@@ -851,6 +981,11 @@ int init_database(int argc, char *argv[])
 	database->disk_bw = (int64_t)atoll(argv[j++]);			// Disk bandwidth
 	database->ndata_servers = (char)atoi(argv[j++]);			// Number of data servers
 	database->replication = (int32_t)atoi(argv[j++]);		// Input file replication
+	database->activate_tail_stage = (int32_t)atoi(argv[j++]);
+	database->utilization_safety = atof(argv[j++]);
+	database->theoretical_flops_budget = 0;
+	database->effective_flops_budget = 0;
+	database->tail_budget_initialized = 0;
 	database->applications_num = (int32_t)atoi(argv[j++]);
 	database->nmessages_received = 0;				// Store number of messages rec.
 	database->nresults = 0;						// Number of results created
@@ -896,6 +1031,7 @@ int init_database(int argc, char *argv[])
 		database->applications[i].valid_completed_workunits_timestamps = xbt_new0(int32_t, 10000000);;
 		database->applications[i].creation_workunit_timestamps = xbt_new0(int32_t, 10000000);
 
+		database->applications[i].tail_target_workunits_total = 0;
 		database->applications[i].is_on = 1;
 		database->applications[i].suspended_until = 0;
 		database->applications[i].nworkunits_cur = 0;
@@ -922,6 +1058,7 @@ int init_database(int argc, char *argv[])
 workunit_t generate_workunit(pdatabase_t database){
 	int i;
 	workunit_t workunit = xbt_new(s_workunit_t, 1);	
+	double current = 0;
 	workunit->number = bprintf("%" PRId64, database->nworkunits);	
 	workunit->status = IN_PROGRESS;
 	workunit->ntotal_results = 0;
@@ -933,25 +1070,25 @@ workunit_t generate_workunit(pdatabase_t database){
 	workunit->ncurrent_error_results = 0;
 	workunit->credits = -1;
 	double sum = 0;
-	double* prefix_sum = xbt_new(double, database->applications_num);
 	for (i = 0; i < database->applications_num; i++) {
 		if (!database->applications[i].is_on) {
 			continue;
 		}
-		double percantage =  database->applications[i].percentage;
-		sum += percantage;
-		if (i == 0) {
-			prefix_sum[i] = percantage;
-		} else {
-			prefix_sum[i] = prefix_sum[i - 1] + percantage;
+		if (database->activate_tail_stage && database->applications[i].nworkunits >= database->applications[i].tail_target_workunits_total) {
+			continue;
 		}
+		sum += database->applications[i].percentage;
 	}
 	double rand = uniform_ab(0, sum);
 	for (i = 0; i < database->applications_num; i++) {
 		if (!database->applications[i].is_on) {
 			continue;
 		}
-		if (rand < prefix_sum[i]) {
+		if (database->activate_tail_stage && database->applications[i].nworkunits >= database->applications[i].tail_target_workunits_total) {
+			continue;
+		}
+		current += database->applications[i].percentage;
+		if (rand < current) {
 			workunit->application = i;
 			break;
 		}
@@ -967,7 +1104,6 @@ workunit_t generate_workunit(pdatabase_t database){
 	database->applications[workunit->application].nworkunits_cur++;
 	database->applications[workunit->application].creation_workunit_timestamps[(int)MSG_get_clock()] += 1;
 
-	xbt_free(prefix_sum);
 	return workunit;
 }
 
@@ -1010,17 +1146,14 @@ int work_generator(int argc, char *argv[])
 	database = &_pdatabase[project_number];	
 
 	// Wait until the database is initiated
-	MSG_barrier_wait(database->barrier);	
+	MSG_barrier_wait(database->barrier);
+
+	if (database->activate_tail_stage)
+		initialize_tail_budget(database);
 
 	while(!database->wg_end){
 		
 		xbt_mutex_acquire(database->r_mutex);
-
-		if (database->nvalid_workunits == WORKUNITS_TOTAL) {
-			printf("Work generator stopped %f\n", MSG_get_clock());
-			xbt_mutex_release(database->r_mutex);
-			break;
-		}
 	
 		while(database->ncurrent_results >= MAX_BUFFER && !database->wg_end) {
 			xbt_cond_wait(database->wg_full, database->r_mutex);	
@@ -1049,56 +1182,58 @@ int work_generator(int argc, char *argv[])
 		}
 		// Create new workunit and target_nresults
 		else {
-			if (database->nworkunits < WORKUNITS_TOTAL + database->nerror_workunits){
-				int32_t has_active_app = 0;
-				double first_active = 0;
-				for (int i = 0; i < database->applications_num; i++) {
-					application_t application = &database->applications[i];
-					if (application->is_on) {
-						//printf("%d %ld\n", application->nworkunits_cur, application->workunits_number);
-						if (application->nworkunits_cur == application->workunits_number) {
-							printf("application %d is sleeping application->nworkunits_cur %d\n", i, application->nworkunits_cur);
-							application->is_on = 0;
-							application->suspended_until = min(MSG_get_clock() + application->sleep_time, sim_duration);
-							application->nworkunits_cur = 0;
-						}
-					} else {
-						if (application->suspended_until < MSG_get_clock()) {
-							application->is_on = 1;
-						}
-					}
-					if (application->is_on) {
-						has_active_app = 1;
-					}
-					if (application->suspended_until > MSG_get_clock()) {
-						first_active = min(first_active, application->suspended_until);
-					}
-				} 
-				assert(first_active > 0 || has_active_app);
-				if (has_active_app){
-					// Generate workunit
-					//printf("generating %ld %ld %ld %f\n", database->nworkunits, database->ncurrent_results, database->nvalid_workunits, MSG_get_clock());
-					workunit_t workunit = generate_workunit(database);
-					xbt_dict_set(database->current_workunits, workunit->number, workunit, (void_f_pvoid_t) free_workunit); 		
-
-					// Generate target_nresults instances
-					for(i=0; i<database->applications[workunit->application].target_nresults; i++){
-						result_t result = generate_result(database, workunit, 0);
-						xbt_queue_push(database->current_results, (const char *)&(result));	
-					}
-				} else {
-					xbt_mutex_release(database->r_mutex);
-					xbt_ex_t e;
-					TRY {
-						while (database->ncurrent_error_results == 0 && !database->wg_end) {
-							xbt_cond_timedwait(database->wg_err, database->er_mutex, first_active - MSG_get_clock());
-						}
-						xbt_mutex_release(database->er_mutex);
-					} CATCH(e) {
-						xbt_ex_free(e);
-					}
+			int32_t has_active_app = 0;
+			int32_t has_future_app = 0;
+			double first_active = 0;
+			for (i = 0; i < database->applications_num; i++) {
+				application_t application = &database->applications[i];
+				int32_t has_budget = !database->activate_tail_stage || application->nworkunits < application->tail_target_workunits_total;
+				if (!has_budget) {
 					continue;
 				}
+				if (application->is_on) {
+					if (application->nworkunits_cur == application->workunits_number) {
+						printf("application %d is sleeping application->nworkunits_cur %d\n", i, application->nworkunits_cur);
+						application->is_on = 0;
+						application->suspended_until = min(MSG_get_clock() + application->sleep_time, sim_duration);
+						application->nworkunits_cur = 0;
+					}
+				} else {
+					if (application->suspended_until < MSG_get_clock()) {
+						application->is_on = 1;
+					}
+				}
+				if (application->is_on) {
+					has_active_app = 1;
+					has_future_app = 1;
+				} else if (application->suspended_until > MSG_get_clock()) {
+					has_future_app = 1;
+					if (first_active == 0)
+						first_active = application->suspended_until;
+					else
+						first_active = min(first_active, application->suspended_until);
+				}
+			}
+			if (has_active_app){
+				workunit_t workunit = generate_workunit(database);
+				xbt_dict_set(database->current_workunits, workunit->number, workunit, (void_f_pvoid_t) free_workunit); 		
+
+				for(i=0; i<database->applications[workunit->application].target_nresults; i++){
+					result_t result = generate_result(database, workunit, 0);
+					xbt_queue_push(database->current_results, (const char *)&(result));	
+				}
+			} else if (has_future_app) {
+				xbt_mutex_release(database->r_mutex);
+				xbt_ex_t e;
+				TRY {
+					while (database->ncurrent_error_results == 0 && !database->wg_end) {
+						xbt_cond_timedwait(database->wg_err, database->er_mutex, first_active - MSG_get_clock());
+					}
+					xbt_mutex_release(database->er_mutex);
+				} CATCH(e) {
+					xbt_ex_free(e);
+				}
+				continue;
 			} else {
 				xbt_mutex_release(database->r_mutex);
 				while (database->ncurrent_error_results == 0 && !database->wg_end) {
@@ -1516,14 +1651,14 @@ int scheduling_server_dispatcher(int argc, char *argv[])
 			xbt_mutex_acquire(database->r_mutex);
 			xbt_ex_t e;
 			//printf("%ld\n", database->ncurrent_results);
-			if (database->ncurrent_results == 0 && database->nvalid_workunits < WORKUNITS_TOTAL) {
+			if (database->ncurrent_results == 0) {
 				TRY {
 					xbt_cond_timedwait(database->wg_empty, database->r_mutex, 5);
 				} CATCH(e) {
 					xbt_ex_free(e);
 				}
 			}
-			if (database->ncurrent_results == 0 || database->nvalid_workunits == WORKUNITS_TOTAL) {
+			if (database->ncurrent_results == 0) {
 				//printf("sending zero result\n");
 				result = xbt_new0(s_result_t, 1);
 				result->number_tasks = 0;

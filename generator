@@ -31,6 +31,8 @@ max_success_results=($(cat parameters.xml | grep -oP '(?<=max_success_results>)[
 replication=($(cat parameters.xml | grep -oP '(?<=replication>)[^<]+'))
 nscheduling_servers=($(cat parameters.xml | grep -oP '(?<=nscheduling_servers>)[^<]+'))
 ndata_servers=($(cat parameters.xml | grep -oP '(?<=ndata_servers>)[^<]+'))
+activate_tail_stage=($(cat parameters.xml | grep -oP '(?<=activate_tail_stage>)[^<]+'))
+utilization_safety=($(cat parameters.xml | grep -oP '(?<=utilization_safety>)[^<]+'))
 n_applications=($(cat parameters.xml | grep -oP '(?<=n_applications>)[^<]+'))
 application_percentage=($(cat parameters.xml | grep -oP '(?<=application_percentage>)[^<]+'))
 
@@ -108,9 +110,11 @@ do
 	arg2[j++]=${snumber[$i]}
 	arg2[j++]=${name[$i]}
   arg2[j++]=${disk_bw[$i]}
-  arg2[j++]=${nscheduling_servers[$i]} 
+	arg2[j++]=${nscheduling_servers[$i]} 
 	arg2[j++]=${ndata_servers[$i]}	
 	arg2[j++]=${replication[$i]}
+	arg2[j++]=${activate_tail_stage[$i]}
+	arg2[j++]=${utilization_safety[$i]}
   arg2[j++]=${n_applications[$i]}
   for ((k=0; k<n_applications[i]; k++))
   do 

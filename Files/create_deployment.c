@@ -75,6 +75,10 @@ int main(int argc, char *argv[]){
 		fprintf(fd, "\n");
 		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Input files replication
 		fprintf(fd, "\n");
+		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Tail stage active
+		fprintf(fd, "\n");
+		fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Utilization safety
+		fprintf(fd, "\n");
 		int applications_num = atoi(argv[index++]);
 		fprintf(fd, "           <argument value=\"%d\"/> ", applications_num);	// Applications number
 		fprintf(fd, "\n");

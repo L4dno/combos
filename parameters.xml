@@ -11,6 +11,8 @@
 		<server_pw>250000000000</server_pw>		<!-- Server power in FLOPS -->
 		<disk_bw>12000000000</disk_bw>			<!-- Disk speed in bytes/sec -->
 		<replication>2</replication>			<!-- Input files replication -->
+		<activate_tail_stage>0</activate_tail_stage>
+		<utilization_safety>0.85</utilization_safety>	<!-- Коэффициент потерь времени хостов на промежуточные штуки без вычислений; уменьшает полезный бюджет FLOPS для режима хвоста -->
 		<n_applications>2</n_applications>			<!-- Number of applications -->
 		<application>
 			<application_percentage>50<application_percentage>		<!-- Percentage of workunits belonging to this application -->
