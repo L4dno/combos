@@ -27,6 +27,8 @@
 			<delay_bound>1000000</delay_bound>		<!-- Task deadline -->	
 			<success_percentage>90</success_percentage>	<!-- Percentage of success results -->
 			<canonical_percentage>90</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
+			<workunits_number>100000000000</workunits_number>
+			<sleep_time>0</sleep_time>
 		<application>
 		<application>
 			<application_percentage>50<application_percentage>		<!-- Percentage of workunits belonging to this application -->
@@ -43,6 +45,8 @@
 			<delay_bound>100000</delay_bound>		<!-- Task deadline -->	
 			<success_percentage>95</success_percentage>	<!-- Percentage of success results -->
 			<canonical_percentage>95</canonical_percentage> <!-- Percentage of success results that make up a consensus -->
+			<workunits_number>2000</workunits_number>
+			<sleep_time>86400</sleep_time>
 		<application>
 	<sproject/>
 </server_side>

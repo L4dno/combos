@@ -107,6 +107,10 @@ int main(int argc, char *argv[]){
 			fprintf(fd, "\n");		
 			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Tamanyo de workunit - 360 KB
 			fprintf(fd, "\n");
+			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Number of workunits generated in one period
+			fprintf(fd, "\n");
+			fprintf(fd, "           <argument value=\"%s\"/> ", argv[index++]);	// Sleep time between periods
+			fprintf(fd, "\n");
 		}
 		fprintf(fd, "   </process> ");
 		fprintf(fd, "\n");

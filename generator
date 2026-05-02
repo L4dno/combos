@@ -16,6 +16,8 @@ disk_bw=($(cat parameters.xml | grep -oP '(?<=disk_bw>)[^<]+'))
 ifgl_percentage=($(cat parameters.xml | grep -oP '(?<=ifgl_percentage>)[^<]+'))
 ifcd_percentage=($(cat parameters.xml | grep -oP '(?<=ifcd_percentage>)[^<]+'))
 input_file_size=($(cat parameters.xml | grep -oP '(?<=input_file_size>)[^<]+'))
+workunits_number=($(cat parameters.xml | grep -oP '(?<=workunits_number>)[^<]+'))
+sleep_time=($(cat parameters.xml | grep -oP '(?<=sleep_time>)[^<]+'))
 task_fpops=($(cat parameters.xml | grep -oP '(?<=task_fpops>)[^<]+'))
 delay_bound=($(cat parameters.xml | grep -oP '(?<=delay_bound>)[^<]+'))
 output_file_size=($(cat parameters.xml | grep -oP '(?<=output_file_size>)[^<]+'))
@@ -126,6 +128,8 @@ do
     arg2[j++]=${success_percentage[$cur_applications]}
     arg2[j++]=${canonical_percentage[$cur_applications]}		
     arg2[j++]=${input_file_size[$cur_applications]}	
+    arg2[j++]=${workunits_number[$cur_applications]}
+    arg2[j++]=${sleep_time[$cur_applications]}
     ((cur_applications++))
   done
 done

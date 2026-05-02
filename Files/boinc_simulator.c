@@ -780,6 +780,8 @@ int init_database(int argc, char *argv[])
 		database->applications[i].success_percentage = (char)atoi(argv[j++]);		// Success results percentage
 		database->applications[i].canonical_percentage = (char)atoi(argv[j++]);		// Canonical results percentage
 		database->applications[i].input_file_size = (int64_t)atoll(argv[j++]);		// Input file size
+		database->applications[i].workunits_number = (int64_t)atoll(argv[j++]);
+		database->applications[i].sleep_time = (int64_t)atoll(argv[j++]);
 
 		database->applications[i].nworkunits = 0;		// Number of workunits created
 		database->applications[i].nvalid_workunits = 0;	// Number of workunits validated
@@ -789,16 +791,11 @@ int init_database(int argc, char *argv[])
 		database->applications[i].valid_completed_workunits_timestamps = xbt_new0(int32_t, 10000000);;
 		database->applications[i].creation_workunit_timestamps = xbt_new0(int32_t, 10000000);
 
-		database->applications[i].workunits_number = 100000000000;
-		database->applications[i].sleep_time = 0;
 		database->applications[i].is_on = 1;
 		database->applications[i].suspended_until = 0;
 		database->applications[i].nworkunits_cur = 0;
 	} 
 	printf("initialized\n");
-
-	database->applications[1].sleep_time = 3600 * 24;
-	database->applications[1].workunits_number = 2000;
 	
 	// Fill with data server names
 	database->data_servers = xbt_new0(char*, (int) database->ndata_servers);
@@ -913,6 +910,12 @@ int work_generator(int argc, char *argv[])
 	while(!database->wg_end){
 		
 		xbt_mutex_acquire(database->r_mutex);
+
+		if (database->nvalid_workunits == WORKUNITS_TOTAL) {
+			printf("Work generator stopped %f\n", MSG_get_clock());
+			xbt_mutex_release(database->r_mutex);
+			break;
+		}
 	
 		while(database->ncurrent_results >= MAX_BUFFER && !database->wg_end) {
 			xbt_cond_wait(database->wg_full, database->r_mutex);	
@@ -941,53 +944,62 @@ int work_generator(int argc, char *argv[])
 		}
 		// Create new workunit and target_nresults
 		else {
-			int32_t has_active_app = 0;
-			double first_active = 0;
-			for (int i = 0; i < database->applications_num; i++) {
-				application_t application = &database->applications[i];
-				if (application->is_on) {
-					//printf("%d %ld\n", application->nworkunits_cur, application->workunits_number);
-					if (application->nworkunits_cur == application->workunits_number) {
-						printf("application %d is sleeping application->nworkunits_cur %d\n", i, application->nworkunits_cur);
-						application->is_on = 0;
-						application->suspended_until = min(MSG_get_clock() + application->sleep_time, sim_duration);
-						application->nworkunits_cur = 0;
+			if (database->nworkunits < WORKUNITS_TOTAL + database->nerror_workunits){
+				int32_t has_active_app = 0;
+				double first_active = 0;
+				for (int i = 0; i < database->applications_num; i++) {
+					application_t application = &database->applications[i];
+					if (application->is_on) {
+						//printf("%d %ld\n", application->nworkunits_cur, application->workunits_number);
+						if (application->nworkunits_cur == application->workunits_number) {
+							printf("application %d is sleeping application->nworkunits_cur %d\n", i, application->nworkunits_cur);
+							application->is_on = 0;
+							application->suspended_until = min(MSG_get_clock() + application->sleep_time, sim_duration);
+							application->nworkunits_cur = 0;
+						}
+					} else {
+						if (application->suspended_until < MSG_get_clock()) {
+							application->is_on = 1;
+						}
+					}
+					if (application->is_on) {
+						has_active_app = 1;
+					}
+					if (application->suspended_until > MSG_get_clock()) {
+						first_active = min(first_active, application->suspended_until);
+					}
+				} 
+				assert(first_active > 0 || has_active_app);
+				if (has_active_app){
+					// Generate workunit
+					//printf("generating %ld %ld %ld %f\n", database->nworkunits, database->ncurrent_results, database->nvalid_workunits, MSG_get_clock());
+					workunit_t workunit = generate_workunit(database);
+					xbt_dict_set(database->current_workunits, workunit->number, workunit, (void_f_pvoid_t) free_workunit); 		
+
+					// Generate target_nresults instances
+					for(i=0; i<database->applications[workunit->application].target_nresults; i++){
+						result_t result = generate_result(database, workunit, 0);
+						xbt_queue_push(database->current_results, (const char *)&(result));	
 					}
 				} else {
-					if (application->suspended_until < MSG_get_clock()) {
-						application->is_on = 1;
+					xbt_mutex_release(database->r_mutex);
+					xbt_ex_t e;
+					TRY {
+						while (database->ncurrent_error_results == 0 && !database->wg_end) {
+							xbt_cond_timedwait(database->wg_err, database->er_mutex, first_active - MSG_get_clock());
+						}
+						xbt_mutex_release(database->er_mutex);
+					} CATCH(e) {
+						xbt_ex_free(e);
 					}
-				}
-				if (application->is_on) {
-					has_active_app = 1;
-				}
-				if (application->suspended_until > MSG_get_clock()) {
-					first_active = min(first_active, application->suspended_until);
-				}
-			} 
-			assert(first_active > 0 || has_active_app);
-			if (has_active_app){
-				// Generate workunit
-				//printf("generating %ld %ld %ld %f\n", database->nworkunits, database->ncurrent_results, database->nvalid_workunits, MSG_get_clock());
-				workunit_t workunit = generate_workunit(database);
-				xbt_dict_set(database->current_workunits, workunit->number, workunit, (void_f_pvoid_t) free_workunit); 		
-
-				// Generate target_nresults instances
-				for(i=0; i<database->applications[workunit->application].target_nresults; i++){
-					result_t result = generate_result(database, workunit, 0);
-					xbt_queue_push(database->current_results, (const char *)&(result));	
+					continue;
 				}
 			} else {
 				xbt_mutex_release(database->r_mutex);
-				xbt_ex_t e;
-				TRY {
-					while (database->ncurrent_error_results == 0 && !database->wg_end) {
-						xbt_cond_timedwait(database->wg_err, database->er_mutex, first_active - MSG_get_clock());
-					}
-					xbt_mutex_release(database->er_mutex);
-				} CATCH(e) {
-					xbt_ex_free(e);
+				while (database->ncurrent_error_results == 0 && !database->wg_end) {
+					xbt_cond_wait(database->wg_err, database->er_mutex);
 				}
+				xbt_mutex_release(database->er_mutex);
 				continue;
 			}
 		}
@@ -1399,15 +1411,14 @@ int scheduling_server_dispatcher(int argc, char *argv[])
 			xbt_mutex_acquire(database->r_mutex);
 			xbt_ex_t e;
 			//printf("%ld\n", database->ncurrent_results);
-			/*if (database->ncurrent_results == 0 && database->nvalid_workunits < WORKUNITS_TOTAL) {
+			if (database->ncurrent_results == 0 && database->nvalid_workunits < WORKUNITS_TOTAL) {
 				TRY {
-					//printf("waiting %ld %ld\n", database->nvalid_workunits, database->ncurrent_results);
 					xbt_cond_timedwait(database->wg_empty, database->r_mutex, 5);
 				} CATCH(e) {
 					xbt_ex_free(e);
 				}
-			}*/
-			if (database->ncurrent_results == 0) {
+			}
+			if (database->ncurrent_results == 0 || database->nvalid_workunits == WORKUNITS_TOTAL) {
 				//printf("sending zero result\n");
 				result = xbt_new0(s_result_t, 1);
 				result->number_tasks = 0;
