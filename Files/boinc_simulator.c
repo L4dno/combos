@@ -236,6 +236,8 @@ struct client {
 	char no_actions;		// No actions [0,1]
 	char on;			// Client will know who sent the signal
 	char initialized;		// Client initialized or not [0,1]
+	char stats_online;
+	char stats_idle;
 	int32_t group_number;		// Group_number
 	int64_t speed;			// Host speed
 	double sum_priority;		// sum of projects' priority
@@ -458,6 +460,9 @@ int32_t _num_clients_t;			// Total number of clients
 int64_t _total_speed; 			// Total clients speed (maximum 2⁶³-1)
 double _total_available;		// Total time clients available
 double _total_notavailable;		// Total time clients notavailable
+double *_grid_online_power_deltas;
+double *_grid_idle_power_deltas;
+xbt_mutex_t _grid_power_mutex;
 
 /* 
  *	Parse memory usage 
@@ -493,6 +498,8 @@ int memoryUsage(){
         return result;
 }
 
+static void grid_idle(client_t client);
+
 /*
  *	Free workunit
  */
@@ -512,6 +519,7 @@ static void free_task(task_t task)
 		task->running = 0;
 		MSG_task_cancel(task->msg_task);
 		task->project->running_task = NULL;
+		grid_idle(task->project->client);
 	}
 	if (task->heap_index >= 0)
 		xbt_heap_remove(task->project->client->deadline_missed, task->heap_index);
@@ -571,6 +579,86 @@ static void free_client(client_t client)
 	xbt_mutex_destroy(client->mutex_init);
 	xbt_cond_destroy(client->cond_init);
 	xbt_free(client);
+}
+
+static void grid_online(client_t client)
+{
+	double power;
+	int32_t time;
+
+	power = client->speed/1000000000.0;
+	time = (int32_t)MSG_get_clock();
+
+	xbt_mutex_acquire(_grid_power_mutex);
+	if(client->stats_online){
+		xbt_mutex_release(_grid_power_mutex);
+		return;
+	}
+	_grid_online_power_deltas[time] += power;
+	if(!client->running_project || !client->running_project->running_task){
+		_grid_idle_power_deltas[time] += power;
+		client->stats_idle = 1;
+	}
+	client->stats_online = 1;
+	xbt_mutex_release(_grid_power_mutex);
+}
+
+static void grid_offline(client_t client)
+{
+	double power;
+	int32_t time;
+
+	power = client->speed/1000000000.0;
+	time = (int32_t)MSG_get_clock();
+
+	xbt_mutex_acquire(_grid_power_mutex);
+	if(!client->stats_online){
+		xbt_mutex_release(_grid_power_mutex);
+		return;
+	}
+	_grid_online_power_deltas[time] -= power;
+	if(client->stats_idle){
+		_grid_idle_power_deltas[time] -= power;
+		client->stats_idle = 0;
+	}
+	client->stats_online = 0;
+	xbt_mutex_release(_grid_power_mutex);
+}
+
+static void grid_busy(client_t client)
+{
+	double power;
+	int32_t time;
+
+	power = client->speed/1000000000.0;
+	time = (int32_t)MSG_get_clock();
+
+	xbt_mutex_acquire(_grid_power_mutex);
+	if(!client->stats_online || !client->stats_idle){
+		xbt_mutex_release(_grid_power_mutex);
+		return;
+	}
+	_grid_idle_power_deltas[time] -= power;
+	client->stats_idle = 0;
+	xbt_mutex_release(_grid_power_mutex);
+}
+
+static void grid_idle(client_t client)
+{
+	double power;
+	int32_t time;
+
+	power = client->speed/1000000000.0;
+	time = (int32_t)MSG_get_clock();
+
+	xbt_mutex_acquire(_grid_power_mutex);
+	if(!client->stats_online || client->stats_idle){
+		xbt_mutex_release(_grid_power_mutex);
+		return;
+	}
+	_grid_idle_power_deltas[time] += power;
+	client->stats_idle = 1;
+	xbt_mutex_release(_grid_power_mutex);
 }
 
 /* 
@@ -644,6 +732,10 @@ int print_results(){
 	int progress;			// Progress [0, 100]
 	int64_t i, j, k, l;		// Indices	
 	double sleep;			// Sleep time	
+	double online_power = 0;
+	double idle_power = 0;
+	double busy_power;
+	double grid_utilization;
 	pdatabase_t database = NULL;	// Server info pointer
 
 	// Init variables
@@ -719,6 +811,19 @@ int print_results(){
 		printf("written\n");
 		
 	}
+
+	FILE *grid_utilization_file = fopen("../exp/grid_utilization", "w+");
+	for(j=0; j<sim_duration; j++){
+		online_power += _grid_online_power_deltas[j];
+		idle_power += _grid_idle_power_deltas[j];
+		busy_power = online_power - idle_power;
+		if(online_power > 0)
+			grid_utilization = busy_power / online_power;
+		else
+			grid_utilization = 0;
+		fprintf(grid_utilization_file, "%0.6f\n", grid_utilization);
+	}
+	fclose(grid_utilization_file);
 
 	return 0;
 }
@@ -2445,6 +2550,7 @@ int client_execute_tasks(int argc, char *argv[])
 		xbt_cond_signal(proj->client->work_fetch_cond);
 		task->running = 1;
 		proj->running_task = task;
+		grid_busy(proj->client);
 		/* task finishs its execution, free structures */
 
 		//printf("----(1)-------Task(%s)(%s) from project(%s) start  duration = %g   speed=  %g %d\n", task->name, task, proj->name,  MSG_task_get_compute_duration(task->msg_task), MSG_get_host_speed(MSG_host_self()), MSG_get_clock(), MSG_host_get_core_number(MSG_host_self()));
@@ -2473,6 +2579,7 @@ int client_execute_tasks(int argc, char *argv[])
 			client_clean_short_debt(proj->client);
 
 			proj->running_task = NULL;
+			grid_idle(proj->client);
 			free_task(task);
 			
 			proj->client->on = 1;	
@@ -2483,6 +2590,7 @@ int client_execute_tasks(int argc, char *argv[])
 		printf("%f: ---(2)--------Task(%s)(%p) from project(%s) error finished  duration = %g   speed=  %g\n", MSG_get_clock(), task->name, task, proj->name,  MSG_task_get_compute_duration(task->msg_task), MSG_get_host_speed(MSG_host_self()));
 		task->running = 0;
 		proj->running_task = NULL;
+		grid_idle(proj->client);
 		free_task(task);
 		continue;
 	}
@@ -2588,6 +2696,8 @@ static client_t client_new(int argc, char *argv[])
 	client->initialized = 0;
 	client->n_projects = 0;
 	client->work_fetch_multiplicator = 1;
+	client->stats_online = 0;
+	client->stats_idle = 0;
 
 	double join_time = client->join_day * 24 + uniform_ab(0, min(24, (sim_duration - MSG_get_clock()) / 3600.0));
 	MSG_process_sleep(join_time * 3600);
@@ -2650,6 +2760,7 @@ int client(int argc, char *argv[])
 			working = 1;
 			pdatabase_t database = &_pdatabase[0];
 			database->clients_availability[(int32_t)MSG_get_clock()] += 1;
+			grid_online(client);
 			random = (ran_distri(_group_info[client->group_number].av_distri, _group_info[client->group_number].aa_param, _group_info[client->group_number].ab_param)*3600.0);
 			random = max(random, 0);
 			if(ceil(random + MSG_get_clock()) >= sim_duration){
@@ -2697,6 +2808,8 @@ int client(int argc, char *argv[])
 				random = max(sim_duration-MSG_get_clock(), 0);
 				working = 1;
 			}
+			if(!working)
+				grid_offline(client);
 			FILE* unavailability = fopen("../exp/unavailability", "a+");
 			fprintf(unavailability, "%0.1f\n", random / 3600);
 			fclose(unavailability);
@@ -2861,10 +2974,13 @@ int main(int argc, char *argv[])
 	remove("../exp/sent_results");
 	remove("../exp/got_results");
 	remove("../exp/workunits_creation");
+	remove("../exp/grid_utilization");
 
 	_total_speed = 0;
 	_total_available = 0;
 	_total_notavailable = 0;
+	_grid_online_power_deltas = xbt_new0(double, 10000000);
+	_grid_idle_power_deltas = xbt_new0(double, 10000000);
 	_pdatabase = xbt_new0(s_pdatabase_t, NUMBER_PROJECTS);
 	_sserver_info = xbt_new0(s_sserver_t, NUMBER_SCHEDULING_SERVERS);
 	_dserver_info = xbt_new0(s_dserver_t, NUMBER_DATA_SERVERS);
@@ -2964,6 +3080,7 @@ int main(int argc, char *argv[])
 
 	_num_clients_t = atoi(argv[i*2+3]);
 	_client_mutex = xbt_mutex_init();
+	_grid_power_mutex = xbt_mutex_init();
 	_sscomm = xbt_dict_new();
 	_dscomm = xbt_dict_new();	
 
@@ -3044,7 +3161,10 @@ int main(int argc, char *argv[])
 	xbt_free(_sserver_info);
 	xbt_free(_dserver_info);
 	xbt_free(_group_info);
+	xbt_free(_grid_online_power_deltas);
+	xbt_free(_grid_idle_power_deltas);
 	xbt_mutex_destroy(_client_mutex);
+	xbt_mutex_destroy(_grid_power_mutex);
 	xbt_dict_free(&_sscomm);
 	xbt_dict_free(&_dscomm);
 
