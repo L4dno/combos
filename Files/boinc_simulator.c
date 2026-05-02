@@ -41,8 +41,9 @@ XBT_LOG_NEW_DEFAULT_CATEGORY(boinc_simulator, "Messages specific for this boinc 
 
 #define MAX_SHORT_TERM_DEBT 86400
 #define MAX_TIMEOUT_SERVER 86400*365 	// One year without client activity, only to finish simulation for a while
-#define MAX_SIMULATED_TIME 120		// Simulation time in hours
+#define MAX_SIMULATED_TIME 1200		// Simulation time in hours
 #define WORK_FETCH_PERIOD 60		// Work fetch period
+#define MAX_WORK_FETCH_MULTIPLICATOR (86400.0 / WORK_FETCH_PERIOD)
 #define KB 1024				// 1 KB in bytes
 #define PRECISION 0.00001		// Accuracy (used in client_work_fetch())
 #define CREDITS_CPU_S 0.002315 		// Credits per second (1 GFLOP machine)
@@ -1751,6 +1752,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 	char *server_name = NULL;			// Store data server name 
 	msg_comm_t comm = NULL;				// Asynchronous communication
 	int32_t i;					// Index
+	double rand = 0;
 
 	database = &_pdatabase[(int)proj->number];	// Boinc server info pointer	
 		
@@ -1803,7 +1805,6 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 	}
 
 	// Request work
-	if (proj->on) {
 		sswork_request = xbt_new0(s_ssmessage_t, 1);
 		sswork_request->type = REQUEST;
 		sswork_request->content = xbt_new(s_request_t, 1);
@@ -1847,10 +1848,12 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 
 		if(sswork_reply->number_tasks == 0) {
 			proj->on = 0;
-			client->work_fetch_multiplicator += uniform_ab(3, 4);
+			rand = uniform_ab(1.9, 2.1);
+			client->work_fetch_multiplicator = min(MAX_WORK_FETCH_MULTIPLICATOR, client->work_fetch_multiplicator * rand);
 		} else {
 			proj->on = 1;
-			client->work_fetch_multiplicator = 1;
+			rand = uniform_ab(1.9, 2.1);
+			client->work_fetch_multiplicator = max(1.0, client->work_fetch_multiplicator / rand);
 		}
 		// Insert received tasks in tasks swag	
 		for (i = 0; i < (int)sswork_reply->number_tasks; i++) {
@@ -1867,7 +1870,6 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 		xbt_free(sswork_reply->tasks);
 		xbt_free(sswork_reply);
 		MSG_task_destroy(sswork_reply_task);
-	}
 	
 	// Signal main client process 
 	client->on = 0;	
@@ -2008,7 +2010,7 @@ FIXME: http://www.boinc-wiki.info/Work-Fetch_Policy */
 				//printf("*************    ASK FOR WORK      %g   %g\n",   work_percentage, MSG_get_clock());
 				if (!selected_proj->on && selected_proj->total_tasks_executed == selected_proj->total_tasks_checked)	{
 					MSG_process_sleep((client->work_fetch_multiplicator - 1) * WORK_FETCH_PERIOD);
-				}		
+				}
 				//printf("asking for work %0.1f\n", MSG_get_clock());
 				client_ask_for_work(client, selected_proj, work_percentage);		
 			} 
