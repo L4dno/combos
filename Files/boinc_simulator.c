@@ -695,6 +695,7 @@ int print_results(){
 		printf("  Credit granted: \t\t%'" PRId64 " credits\n\n\n", (long int)database->total_credit);
 		FILE *task_dynamic_file = fopen("../exp/task_dynamic", "w+");
 		FILE *task_creation_file = fopen("../exp/workunits_creation", "w+");
+		FILE *clients_dynamic_file = fopen("../exp/clients_dynamic", "w+");
 		for (j = 0; j < database->applications_num; j++) {
 			printf("Application %ld\n", j);
 			application_t application = &database->applications[j];
@@ -705,6 +706,8 @@ int print_results(){
 		}
 		fclose(task_dynamic_file);
 		fclose(task_creation_file);
+		for(j=0; j<sim_duration; j++) fprintf(clients_dynamic_file, "%d\n", database->clients_availability[j]);
+		fclose(clients_dynamic_file);
 		//printf("  FLOPS average: \t\t%'" PRId64 " GFLOPS\n\n", (int64_t)((double)database->nvalid_results*(double)database->job_duration/sim_duration/1000000000.0));	
 		FILE *task_completed_dynamic_file = fopen("../exp/task_dynamic_completed", "a+");
 		for(j=0; j<sim_duration; j++) fprintf(task_completed_dynamic_file, "%d %d\n", database->applications[0].target_nresults, database->valid_completed_workunits_timestamps[j]);	
@@ -2841,6 +2844,7 @@ int main(int argc, char *argv[])
 	remove("../exp/speed_statistics");
 	remove("../exp/availability");
 	remove("../exp/unavailability");
+	remove("../exp/clients_dynamic");
 	remove("../exp/sent_results");
 	remove("../exp/got_results");
 	remove("../exp/workunits_creation");
