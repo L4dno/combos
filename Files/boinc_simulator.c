@@ -2103,8 +2103,7 @@ static int client_ask_for_work(client_t client, project_t proj, double percentag
 			client->work_fetch_multiplicator = min(MAX_WORK_FETCH_MULTIPLICATOR, client->work_fetch_multiplicator * rand);
 		} else {
 			proj->on = 1;
-			rand = uniform_ab(1.9, 2.1);
-			client->work_fetch_multiplicator = max(1.0, client->work_fetch_multiplicator / rand);
+			client->work_fetch_multiplicator = 1.0;
 		}
 		// Insert received tasks in tasks swag	
 		for (i = 0; i < (int)sswork_reply->number_tasks; i++) {
