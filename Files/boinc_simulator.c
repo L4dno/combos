@@ -780,6 +780,8 @@ static void initialize_tail_budget(pdatabase_t database)
 			database->applications[i].tail_target_workunits_total = (int64_t)floor(app_budget / workunit_cost);
 		else
 			database->applications[i].tail_target_workunits_total = 0;
+		database->applications[i].workunits_number = database->applications[i].tail_target_workunits_total;
+		database->applications[i].sleep_time = (int64_t)ceil(sim_duration);
 	}
 
 	database->tail_budget_initialized = 1;
@@ -1074,17 +1076,11 @@ workunit_t generate_workunit(pdatabase_t database){
 		if (!database->applications[i].is_on) {
 			continue;
 		}
-		if (database->activate_tail_stage && database->applications[i].nworkunits >= database->applications[i].tail_target_workunits_total) {
-			continue;
-		}
 		sum += database->applications[i].percentage;
 	}
 	double rand = uniform_ab(0, sum);
 	for (i = 0; i < database->applications_num; i++) {
 		if (!database->applications[i].is_on) {
-			continue;
-		}
-		if (database->activate_tail_stage && database->applications[i].nworkunits >= database->applications[i].tail_target_workunits_total) {
 			continue;
 		}
 		current += database->applications[i].percentage;
@@ -1187,10 +1183,6 @@ int work_generator(int argc, char *argv[])
 			double first_active = 0;
 			for (i = 0; i < database->applications_num; i++) {
 				application_t application = &database->applications[i];
-				int32_t has_budget = !database->activate_tail_stage || application->nworkunits < application->tail_target_workunits_total;
-				if (!has_budget) {
-					continue;
-				}
 				if (application->is_on) {
 					if (application->nworkunits_cur == application->workunits_number) {
 						printf("application %d is sleeping application->nworkunits_cur %d\n", i, application->nworkunits_cur);
