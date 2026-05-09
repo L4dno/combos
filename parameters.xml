@@ -12,7 +12,7 @@
 		<disk_bw>12000000000</disk_bw>			<!-- Disk speed in bytes/sec -->
 		<replication>2</replication>			<!-- Input files replication -->
 		<activate_tail_stage>1</activate_tail_stage>
-		<utilization_safety>0.9</utilization_safety>	<!-- Коэффициент потерь времени хостов на промежуточные штуки без вычислений; уменьшает полезный бюджет FLOPS для режима хвоста -->
+		<utilization_safety>0.7</utilization_safety>	<!-- Коэффициент потерь времени хостов на промежуточные штуки без вычислений; уменьшает полезный бюджет FLOPS для режима хвоста -->
 		<n_applications>2</n_applications>			<!-- Number of applications -->
 		<application>
 			<application_percentage>50<application_percentage>		<!-- Percentage of workunits belonging to this application -->
@@ -74,6 +74,8 @@
 		<nv_distri>2</nv_distri>			<!-- Non-availability fit distribution [ran_weibull, ran_gamma, ran_lognormal, normal, hyperx, exponential] -->
 		<na_param>-0.586</na_param>			<!-- A -->
 		<nb_param>2.844</nb_param>			<!-- B -->
+		<tail_mean_speed>53.651965</tail_mean_speed>  <!-- mean host speed in gflops from general.txt -->
+		<tail_availability>55.3</tail_availability>  <!-- mean host availability percent from general.txt -->
 		<att_projs>1</att_projs>			<!-- Number of projects attached -->
 		<gproject>
 			<pnumber>0</pnumber>			<!-- Project number -->

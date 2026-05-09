@@ -217,11 +217,15 @@ int main(int argc, char *argv[]){
 				fprintf(fd, "\n");
         	 	       	fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
 				fprintf(fd, "\n");
-        	     		fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Nav. random distribution -->
+        	        fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Nav. random distribution -->
 				fprintf(fd, "\n");
         	        	fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- A argument -->
 				fprintf(fd, "\n");
         	        	fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- B argument -->
+				fprintf(fd, "\n");
+        	        	fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Tail mean speed override -->
+				fprintf(fd, "\n");
+        	        	fprintf(fd, "        <argument value=\"%s\"/>  ", argv[index++]); // <!-- Tail availability override -->
 				fprintf(fd, "\n");
         	        	if(fd_traces != NULL){
 					fprintf(fd, "        <argument value=\"%f\"/>  ", getrow(fd_traces)); 		// <!-- Host power -->		

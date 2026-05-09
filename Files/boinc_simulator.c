@@ -442,6 +442,8 @@ struct client_group{
 	double nb_param;		// Non availability B parameter
 	double max_speed;		// Maximum host speed
 	double min_speed;		// Minimum host speed
+	double tail_mean_speed;
+	double tail_availability;
 };
 
 /* Simulation time */
@@ -757,8 +759,10 @@ static void initialize_tail_budget(pdatabase_t database)
 
 	database->theoretical_flops_budget = 0;
 	for (i = 0; i < NUMBER_CLIENT_GROUPS; i++) {
-		double mean_speed = clamped_distribution_mean(_group_info[i].sp_distri, _group_info[i].sa_param, _group_info[i].sb_param, _group_info[i].min_speed, _group_info[i].max_speed);
-		double availability = group_availability_mean(&_group_info[i]);
+		double mean_speed = _group_info[i].tail_mean_speed >= 0 ? _group_info[i].tail_mean_speed : clamped_distribution_mean(_group_info[i].sp_distri, _group_info[i].sa_param, _group_info[i].sb_param, _group_info[i].min_speed, _group_info[i].max_speed);
+		double availability = _group_info[i].tail_availability >= 0 ? _group_info[i].tail_availability / 100.0 : group_availability_mean(&_group_info[i]);
+		if (availability > 1.0)
+			availability = 1.0;
 		database->theoretical_flops_budget += _group_info[i].n_clients * mean_speed * 1000000000.0 * availability * sim_duration;
 	}
 
@@ -2763,7 +2767,9 @@ static client_t client_new(int argc, char *argv[])
 		_group_info[group_number].nv_distri = (char) atoi(argv[index++]);
 		_group_info[group_number].na_param = atof(argv[index++]);
 		_group_info[group_number].nb_param = atof(argv[index++]);
-		if((argc-17)%3 != 0){ 
+		_group_info[group_number].tail_mean_speed = atof(argv[index++]);
+		_group_info[group_number].tail_availability = atof(argv[index++]);
+		if((argc-19)%3 != 0){ 
 			aux = atof(argv[index++]);
 		}
 		_group_info[group_number].proj_args = &argv[index];
@@ -3199,6 +3205,8 @@ int main(int argc, char *argv[])
 		_group_info[j].total_speed = 0;
 		_group_info[j].total_available = 0;
 		_group_info[j].total_notavailable = 0;
+		_group_info[j].tail_mean_speed = -1;
+		_group_info[j].tail_availability = -1;
 		_group_info[j].on = 0;
 		_group_info[j].mutex = xbt_mutex_init();
 		_group_info[j].cond = xbt_cond_init();

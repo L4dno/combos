@@ -54,6 +54,8 @@ ab_param=($(cat parameters.xml | grep -oP '(?<=ab_param>)[^<]+'))
 nv_distri=($(cat parameters.xml | grep -oP '(?<=nv_distri>)[^<]+'))
 na_param=($(cat parameters.xml | grep -oP '(?<=na_param>)[^<]+'))
 nb_param=($(cat parameters.xml | grep -oP '(?<=nb_param>)[^<]+'))
+tail_mean_speed=($(cat parameters.xml | grep -oP '(?<=tail_mean_speed>)[^<]+'))
+tail_availability=($(cat parameters.xml | grep -oP '(?<=tail_availability>)[^<]+'))
 att_projs=($(cat parameters.xml | grep -oP '(?<=att_projs>)[^<]+'))
 pnumber=($(cat parameters.xml | grep -oP '(?<=pnumber>)[^<]+'))
 priority=($(cat parameters.xml | grep -oP '(?<=priority>)[^<]+'))
@@ -159,6 +161,8 @@ do
   arg2[j++]=${nv_distri[$i]}
   arg2[j++]=${na_param[$i]}
   arg2[j++]=${nb_param[$i]}
+  arg2[j++]=${tail_mean_speed[$i]:--1}
+  arg2[j++]=${tail_availability[$i]:--1}
   for((k=0; k<att_projs[i]; k++, l++))
   do
 	arg2[j++]=${pnumber[$l]}
